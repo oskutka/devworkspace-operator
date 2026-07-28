@@ -1,5 +1,21 @@
 # DevWorkspace Operator Changelog
 
+# v0.43.0
+
+## Bug Fixes & Improvements
+
+- Apply configured `imagePullPolicy` from `DevWorkspaceOperatorConfig` to backup CronJob containers instead of hardcoding `Always` [#1654](https://github.com/devfile/devworkspace-operator/pull/1654)
+
+- Apply configured `podSecurityContext` from `DevWorkspaceOperatorConfig` to backup CronJob pod templates for consistency with workspace deployments [#1655](https://github.com/devfile/devworkspace-operator/pull/1655)
+
+- Fix SSH askpass script to handle non-passphrase prompts, preventing error messages when cloning private repositories [#1658](https://github.com/devfile/devworkspace-operator/pull/1658)
+
+- Add documentation for cross-namespace DevWorkspaceTemplate imports using the `controller.devfile.io/allow-import-from` annotation [#1673](https://github.com/devfile/devworkspace-operator/pull/1673)
+
+- Update controller-runtime to v0.24.1 and Kubernetes dependencies to v0.36.0 [#1642](https://github.com/devfile/devworkspace-operator/pull/1642)
+
+- Update Go to v1.26.5 [#1671](https://github.com/devfile/devworkspace-operator/pull/1671)
+
 # v0.42.0
 
 ## Features
