@@ -11,13 +11,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package overrides
+package restrictions_test
 
 import (
+	"fmt"
 	"testing"
 
 	dw "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
 	"github.com/devfile/api/v2/pkg/attributes"
+	"github.com/devfile/devworkspace-operator/pkg/library/overrides"
+	"github.com/devfile/devworkspace-operator/pkg/library/overrides/restrictions"
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -1444,11 +1447,11 @@ func TestRestrictPodOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			err := restrictPodOverride(&tt.Override, tt.RestrictedFields)
+			err := restrictions.RestrictPodOverride(&tt.Override, tt.RestrictedFields)
 
 			if tt.IsErrorExpected {
 				assert.Error(t, err)
-				assert.Equal(t, getPodRestrictionErr(tt.ErrField).Error(), err.Error())
+				assert.Equal(t, fmt.Sprintf("restricted pod field set %s", tt.ErrField), err.Error())
 			} else {
 				assert.NoError(t, err)
 			}
@@ -1483,7 +1486,7 @@ func TestApplyPodOverridesStripsUnknownFields(t *testing.T) {
 		Image: "test-image",
 	}}
 
-	patched, err := ApplyPodOverrides(workspace, deployment)
+	patched, err := overrides.ApplyPodOverrides(workspace, deployment)
 	assert.NoError(t, err)
 	assert.Equal(t, "custom", patched.Spec.Template.Spec.SchedulerName)
 

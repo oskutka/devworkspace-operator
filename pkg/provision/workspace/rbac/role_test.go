@@ -68,6 +68,9 @@ func TestDoesNothingIfRoleAlreadyInSync(t *testing.T) {
 func TestCreatesSCCRoleIfNotExists(t *testing.T) {
 	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
 	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
+	testdw.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedSCCAnnotation: testSCCName,
+	}
 	api := getTestClusterAPI(t, testdw.DevWorkspace)
 	retryErr := &dwerrors.RetryError{}
 	err := syncRoles(testdw, api)
@@ -91,6 +94,9 @@ func TestCreatesSCCRoleIfNotExists(t *testing.T) {
 func TestDoesNothingIfSCCRoleAlreadyInSync(t *testing.T) {
 	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
 	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
+	testdw.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedSCCAnnotation: testSCCName,
+	}
 	api := getTestClusterAPI(t, testdw.DevWorkspace)
 	retryErr := &dwerrors.RetryError{}
 	err := syncRoles(testdw, api)

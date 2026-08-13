@@ -17,14 +17,21 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
-
-	maputils "github.com/devfile/devworkspace-operator/internal/map"
-	"github.com/devfile/devworkspace-operator/pkg/constants"
+	"sort"
 
 	dwv1 "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha1"
 	dwv2 "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
+	maputils "github.com/devfile/devworkspace-operator/internal/map"
+	"github.com/devfile/devworkspace-operator/pkg/common"
+	"github.com/devfile/devworkspace-operator/pkg/config"
+	"github.com/devfile/devworkspace-operator/pkg/constants"
+	"github.com/devfile/devworkspace-operator/pkg/httpfactory"
+	wsDefaults "github.com/devfile/devworkspace-operator/pkg/library/defaults"
+	"github.com/devfile/devworkspace-operator/pkg/library/flatten"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -38,7 +45,7 @@ func (h *WebhookHandler) MutateWorkspaceV1alpha1OnCreate(ctx context.Context, re
 
 	wksp.Labels = maputils.Append(wksp.Labels, constants.DevWorkspaceCreatorLabel, req.UserInfo.UID)
 
-	if err := h.validateKubernetesObjectPermissionsOnCreate_v1alpha1(ctx, req, &wksp.Spec.Template); err != nil {
+	if err := h.validateKubernetesObjectPermissions_v1alpha1(ctx, req, &wksp.Spec.Template); err != nil {
 		return admission.Denied(err.Error())
 	}
 
@@ -54,15 +61,11 @@ func (h *WebhookHandler) MutateWorkspaceV1alpha2OnCreate(ctx context.Context, re
 
 	wksp.Labels = maputils.Append(wksp.Labels, constants.DevWorkspaceCreatorLabel, req.UserInfo.UID)
 
-	if err := h.validateUserPermissions(ctx, req, wksp, nil); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	if err := h.validateKubernetesObjectPermissionsOnCreate(ctx, req, &wksp.Spec.Template); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	if err := checkMultipleContainerContributionTargets(wksp.Spec.Template); err != nil {
+	_, code, err := h.ValidateWorkspaceV1alpha2Permissions(ctx, wksp, nil, req)
+	if err != nil {
+		if code != nil {
+			return admission.Errored(*code, err)
+		}
 		return admission.Denied(err.Error())
 	}
 
@@ -90,7 +93,7 @@ func (h *WebhookHandler) MutateWorkspaceV1alpha1OnUpdate(ctx context.Context, re
 		return admission.Denied(msg)
 	}
 
-	if err := h.validateKubernetesObjectPermissionsOnUpdate_v1alpha1(ctx, req, &newWksp.Spec.Template, &oldWksp.Spec.Template); err != nil {
+	if err := h.validateKubernetesObjectPermissions_v1alpha1(ctx, req, &newWksp.Spec.Template); err != nil {
 		return admission.Denied(err.Error())
 	}
 
@@ -166,15 +169,11 @@ func (h *WebhookHandler) MutateWorkspaceV1alpha2OnUpdate(ctx context.Context, re
 		return admission.Denied(msg)
 	}
 
-	if err := h.validateUserPermissions(ctx, req, newWksp, oldWksp); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	if err := h.validateKubernetesObjectPermissionsOnUpdate(ctx, req, &newWksp.Spec.Template, &oldWksp.Spec.Template); err != nil {
-		return admission.Denied(err.Error())
-	}
-
-	if err := checkMultipleContainerContributionTargets(newWksp.Spec.Template); err != nil {
+	changed, code, err := h.ValidateWorkspaceV1alpha2Permissions(ctx, newWksp, oldWksp, req)
+	if err != nil {
+		if code != nil {
+			return admission.Errored(*code, err)
+		}
 		return admission.Denied(err.Error())
 	}
 
@@ -200,10 +199,147 @@ func (h *WebhookHandler) MutateWorkspaceV1alpha2OnUpdate(ctx context.Context, re
 		return admission.Denied(fmt.Sprintf("label '%s' is assigned once devworkspace is created and is immutable", constants.DevWorkspaceCreatorLabel))
 	}
 
+	if changed {
+		response := h.returnPatched(req, newWksp)
+		if warnings != "" {
+			response = response.WithWarnings(warnings)
+		}
+		return response
+	}
+
 	if warnings != "" {
 		return admission.Allowed("").WithWarnings(warnings)
 	}
 	return admission.Allowed("new workspace has the same devworkspace as old one")
+}
+
+func (h *WebhookHandler) ValidateWorkspaceV1alpha2Permissions(
+	ctx context.Context,
+	newWorkspace *dwv2.DevWorkspace,
+	oldWorkspace *dwv2.DevWorkspace,
+	req admission.Request,
+) (bool, *int32, error) {
+	newWorkspaceConfig, err := config.ResolveConfigForWorkspace(newWorkspace, h.Client)
+	if err != nil {
+		return false, ptr.To(int32(http.StatusBadRequest)), err
+	}
+
+	newWorkspaceTemplate, err := h.resolveDevWorkspace(
+		ctx,
+		&common.DevWorkspaceWithConfig{
+			DevWorkspace: newWorkspace,
+			Config:       newWorkspaceConfig,
+		},
+	)
+	if err != nil {
+		// When started=true, resolution must succeed — the controller will attempt to start
+		// the workspace, so reject early if the spec can't be fully resolved.
+		if newWorkspace.Spec.Started {
+			return false, ptr.To(int32(http.StatusBadRequest)), err
+		}
+
+		// Resolution can fail if parent/plugin templates don't exist yet;
+		newWorkspaceTemplate = &newWorkspace.Spec.Template
+	}
+
+	// Passing the unresolved oldWorkspace is sufficient here. The validation check prefers the
+	// `controller.devfile.io/validated-scc` annotation (which already reflects the resolved/flattened
+	// spec from the previous webhook call) and only falls back to the raw SCC attribute for backward
+	// compatibility with workspaces created before the annotation was introduced.
+	validatedSCC, err := h.validateUserPermissions(ctx, req, newWorkspaceTemplate, oldWorkspace)
+	if err != nil {
+		return false, nil, err
+	}
+
+	// Always re-validate against the new spec, even on updates: the user's RBAC
+	// permissions may have been revoked since the last webhook call, so previously
+	// validated resource types cannot be assumed to still be allowed.
+	validatedKubernetesResources, err := h.validateKubernetesObjectPermissions(ctx, req, newWorkspaceTemplate)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if err := checkMultipleContainerContributionTargets(newWorkspaceTemplate); err != nil {
+		return false, nil, err
+	}
+
+	changed, err := setValidatedPermissionsAnnotations(newWorkspace, validatedSCC, validatedKubernetesResources)
+	if err != nil {
+		return false, ptr.To(int32(http.StatusInternalServerError)), err
+	}
+
+	return changed, nil, nil
+}
+
+func (h *WebhookHandler) resolveDevWorkspace(
+	ctx context.Context,
+	workspace *common.DevWorkspaceWithConfig,
+) (*dwv2.DevWorkspaceTemplateSpec, error) {
+	// HttpFactory initialized in `webhook/main.go`
+	httpClient := httpfactory.HttpFactory.GetHttpClient(ctx, workspace.Config.Routing)
+
+	flattenHelpers := flatten.ResolverTools{
+		WorkspaceNamespace:          workspace.Namespace,
+		Context:                     ctx,
+		K8sClient:                   h.Client,
+		HttpClient:                  httpClient,
+		DefaultResourceRequirements: workspace.Config.Workspace.DefaultContainerResources,
+	}
+
+	if wsDefaults.NeedsDefaultTemplate(workspace) {
+		workspace = &common.DevWorkspaceWithConfig{
+			// Make copy, don't change the original DevWorkspace object
+			DevWorkspace: workspace.DeepCopy(),
+			Config:       workspace.Config,
+		}
+		wsDefaults.ApplyDefaultTemplate(workspace)
+	}
+
+	flattenedWorkspace, _, err := flatten.ResolveDevWorkspace(&workspace.Spec.Template, workspace.Spec.Contributions, flattenHelpers)
+	if err != nil {
+		return nil, err
+	}
+
+	return flattenedWorkspace, nil
+}
+
+func setValidatedPermissionsAnnotations(
+	workspace *dwv2.DevWorkspace,
+	validatedSCC string,
+	validatedKubernetesResources []string,
+) (bool, error) {
+	sort.Strings(validatedKubernetesResources)
+
+	validatedKubernetesResourcesStr := ""
+	if len(validatedKubernetesResources) > 0 {
+		bytes, err := json.Marshal(validatedKubernetesResources)
+		if err != nil {
+			return false, fmt.Errorf("failed to marshal validated kubernetes resources: %w", err)
+		}
+		validatedKubernetesResourcesStr = string(bytes)
+	}
+
+	changed := setOrDeleteAnnotation(workspace, constants.DevWorkspaceValidatedSCCAnnotation, validatedSCC)
+	changed = changed ||
+		setOrDeleteAnnotation(workspace, constants.DevWorkspaceValidatedK8sResourcesAnnotation, validatedKubernetesResourcesStr)
+
+	return changed, nil
+}
+
+func setOrDeleteAnnotation(workspace *dwv2.DevWorkspace, key, newValue string) bool {
+	oldValue, oldValueExists := workspace.Annotations[key]
+
+	if newValue == "" {
+		if len(workspace.Annotations) == 0 {
+			return false
+		}
+		delete(workspace.Annotations, key)
+
+		return oldValueExists
+	}
+
+	workspace.Annotations = maputils.Append(workspace.Annotations, key, newValue)
+	return oldValue != newValue
 }
 
 func hasFinalizer(obj client.Object, finalizer string) bool {

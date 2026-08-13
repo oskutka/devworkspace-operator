@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/devfile/devworkspace-operator/pkg/httpfactory"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dwv1 "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha1"
@@ -147,7 +148,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Set HTTP client to fail all requests by default; tests that require HTTP must set this up directly
-	workspacecontroller.SetupHttpClientsForTesting(getBasicTestHttpClient())
+	httpfactory.SetupHttpClientsForTesting(getBasicTestHttpClient())
 
 	// Skip trying to set up / test webhooks for now
 

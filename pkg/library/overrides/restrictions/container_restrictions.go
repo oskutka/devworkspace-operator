@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package overrides
+package restrictions
 
 import (
 	"fmt"
@@ -21,10 +21,10 @@ import (
 )
 
 func getContainerRestrictionErr(msg string) error {
-	return fmt.Errorf("cannot use container-overrides to override container %s", msg)
+	return fmt.Errorf("restricted container field set %s", msg)
 }
 
-func restrictContainerOverride(override *corev1.Container, restrictedFields []string) error {
+func RestrictContainerOverride(override *corev1.Container, restrictedFields []string) error {
 	if override.Name != "" {
 		return getContainerRestrictionErr("name")
 	}
@@ -44,6 +44,10 @@ func restrictContainerOverride(override *corev1.Container, restrictedFields []st
 		return getContainerRestrictionErr("env")
 	}
 
+	return RestrictContainer(override, restrictedFields)
+}
+
+func RestrictContainer(container *corev1.Container, restrictedFields []string) error {
 	for _, restrictedField := range restrictedFields {
 		fieldName, fieldValue, _ := strings.Cut(restrictedField, "=")
 		if fieldName == "" {
@@ -58,7 +62,7 @@ func restrictContainerOverride(override *corev1.Container, restrictedFields []st
 			getRestrictionErr: getContainerRestrictionErr,
 		}
 
-		if err := checkContainer(override, root, remaining, restriction); err != nil {
+		if err := checkContainer(container, root, remaining, restriction); err != nil {
 			return err
 		}
 	}

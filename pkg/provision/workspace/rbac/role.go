@@ -16,6 +16,7 @@ package rbac
 import (
 	"fmt"
 
+	dw "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
 	"github.com/devfile/devworkspace-operator/pkg/common"
 	"github.com/devfile/devworkspace-operator/pkg/constants"
 	"github.com/devfile/devworkspace-operator/pkg/dwerrors"
@@ -36,6 +37,17 @@ func syncRoles(workspace *common.DevWorkspaceWithConfig, api sync.ClusterAPI) er
 		return nil
 	}
 	sccName := workspace.Spec.Template.Attributes.GetString(constants.WorkspaceSCCAttribute, nil)
+	// For backward compatibility, skip the validation for already-running workspaces since the
+	// annotation may not be present on workspaces created before this check was introduced.
+	// Note: workspaces that are being started just after DWO is updated may fail to start
+	// if the webhook has not re-validated them, as the annotation will be absent.
+	if workspace.Status.Phase != dw.DevWorkspaceStatusRunning {
+		validatedSCC := workspace.Annotations[constants.DevWorkspaceValidatedSCCAnnotation]
+		if validatedSCC != sccName {
+			return fmt.Errorf("user is not authorized to use SecurityContextConstraints '%s'", sccName)
+		}
+	}
+
 	sccRole := generateUseRoleForSCC(workspace.Namespace, sccName)
 	if _, err := sync.SyncObjectWithCluster(sccRole, api); err != nil {
 		return dwerrors.WrapSyncError(err)

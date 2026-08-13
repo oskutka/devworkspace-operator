@@ -16,6 +16,7 @@ package overrides
 import (
 	"fmt"
 
+	"github.com/devfile/devworkspace-operator/pkg/library/overrides/restrictions"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
@@ -43,7 +44,7 @@ func ApplyContainerOverrides(component *dw.Component, container *corev1.Containe
 	if err := component.Attributes.GetInto(constants.ContainerOverridesAttribute, override); err != nil {
 		return nil, fmt.Errorf("failed to parse %s attribute on component %s: %w", constants.ContainerOverridesAttribute, component.Name, err)
 	}
-	if err := restrictContainerOverride(override, restrictedFields); err != nil {
+	if err := restrictions.RestrictContainerOverride(override, restrictedFields); err != nil {
 		return nil, fmt.Errorf("invalid %s attribute on component %s: %w", constants.ContainerOverridesAttribute, component.Name, err)
 	}
 

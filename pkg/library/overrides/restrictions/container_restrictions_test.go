@@ -11,14 +11,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package overrides
+package restrictions_test
 
 import (
+	"fmt"
 	"testing"
 
 	dw "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
 	"github.com/devfile/api/v2/pkg/attributes"
 	"github.com/devfile/devworkspace-operator/pkg/constants"
+	"github.com/devfile/devworkspace-operator/pkg/library/overrides"
+	"github.com/devfile/devworkspace-operator/pkg/library/overrides/restrictions"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -1176,11 +1179,11 @@ func TestRestrictContainerOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			err := restrictContainerOverride(&tt.Override, tt.RestrictedFields)
+			err := restrictions.RestrictContainerOverride(&tt.Override, tt.RestrictedFields)
 
 			if tt.IsErrorExpected {
 				assert.Error(t, err)
-				assert.Equal(t, getContainerRestrictionErr(tt.ErrField).Error(), err.Error())
+				assert.Equal(t, fmt.Sprintf("restricted container field set %s", tt.ErrField), err.Error())
 			} else {
 				assert.NoError(t, err)
 			}
@@ -1207,7 +1210,7 @@ func TestApplyContainerOverridesStripsUnknownFields(t *testing.T) {
 		Image: "test-image",
 	}
 
-	patched, err := ApplyContainerOverrides(component, container, nil)
+	patched, err := overrides.ApplyContainerOverrides(component, container, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "/workspace", patched.WorkingDir)
 

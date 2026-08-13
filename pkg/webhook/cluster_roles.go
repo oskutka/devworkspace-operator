@@ -126,6 +126,43 @@ func getSpecClusterRole() (*v1.ClusterRole, error) {
 					"create",
 				},
 			},
+			{
+				APIGroups: []string{
+					"controller.devfile.io",
+				},
+				Resources: []string{
+					"devworkspaceoperatorconfigs",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+			{
+				APIGroups: []string{
+					"workspace.devfile.io",
+				},
+				Resources: []string{
+					"devworkspacetemplates",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+			{
+				APIGroups: []string{
+					"",
+				},
+				Resources: []string{
+					"configmaps",
+				},
+				Verbs: []string{
+					"get",
+				},
+			},
 		},
 	}
 

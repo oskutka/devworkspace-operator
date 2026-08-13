@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	dw "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
+	"github.com/devfile/devworkspace-operator/pkg/library/overrides/restrictions"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -42,7 +43,7 @@ func NeedsPodOverrides(workspace *common.DevWorkspaceWithConfig) bool {
 }
 
 func ApplyPodOverrides(workspace *common.DevWorkspaceWithConfig, deployment *appsv1.Deployment) (*appsv1.Deployment, error) {
-	overrides, err := getPodOverrides(&workspace.Spec.Template, GetRestrictedPodOverrideFields(workspace))
+	overrides, err := getPodOverrides(&workspace.Spec.Template, restrictions.GetRestrictedPodFields(workspace))
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +113,7 @@ func getPodOverrides(workspace *dw.DevWorkspaceTemplateSpec, restrictedFields []
 			if err := component.Attributes.GetInto(constants.PodOverridesAttribute, &override); err != nil {
 				return nil, fmt.Errorf("failed to parse %s attribute on component %s: %w", constants.PodOverridesAttribute, component.Name, err)
 			}
-			if err := restrictPodOverride(&override.Spec, restrictedFields); err != nil {
+			if err := restrictions.RestrictPodOverride(&override.Spec, restrictedFields); err != nil {
 				return nil, fmt.Errorf("invalid %s attribute on component %s: %w", constants.PodOverridesAttribute, component.Name, err)
 			}
 			patchData := component.Attributes[constants.PodOverridesAttribute]
@@ -125,7 +126,7 @@ func getPodOverrides(workspace *dw.DevWorkspaceTemplateSpec, restrictedFields []
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse %s attribute for workspace: %w", constants.PodOverridesAttribute, err)
 		}
-		if err := restrictPodOverride(&override.Spec, restrictedFields); err != nil {
+		if err := restrictions.RestrictPodOverride(&override.Spec, restrictedFields); err != nil {
 			return nil, fmt.Errorf("invalid %s attribute for workspace: %w", constants.PodOverridesAttribute, err)
 		}
 		patchData := workspace.Attributes[constants.PodOverridesAttribute]

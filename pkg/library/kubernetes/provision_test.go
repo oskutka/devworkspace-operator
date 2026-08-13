@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2025 Red Hat, Inc.
+// Copyright (c) 2019-2026 Red Hat, Inc.
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	dw "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
+	controllerv1alpha1 "github.com/devfile/devworkspace-operator/apis/controller/v1alpha1"
 	"github.com/devfile/devworkspace-operator/pkg/common"
 	"github.com/devfile/devworkspace-operator/pkg/constants"
 	"github.com/devfile/devworkspace-operator/pkg/dwerrors"
@@ -34,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
@@ -105,6 +107,9 @@ func TestHandleKubernetesComponents(t *testing.T) {
 			wksp := &common.DevWorkspaceWithConfig{
 				DevWorkspace: testDevWorkspace.DeepCopy(),
 			}
+			wksp.Annotations = map[string]string{
+				constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod", "/v1, Kind=Service"]`,
+			}
 			wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, tt.Input.Components...)
 			// Repeat function as long as it returns RetryError
 			i := 0
@@ -162,6 +167,9 @@ func TestSecretAndConfigMapProvisioning(t *testing.T) {
 	}
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=ConfigMap", "/v1, Kind=Secret"]`,
 	}
 	cmInline := `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"test-configmap"},"data":{"test":"data"}}`
 	secretInline := `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"test-secret"},"data":{"test":"dGVzdAo="}}`
@@ -235,6 +243,367 @@ func TestHasKubelikeComponent(t *testing.T) {
 	}
 	workspaceWithK8sComponents.Spec.Template.Components = append(workspaceWithK8sComponents.Spec.Template.Components, hasComponents.Input.Components...)
 	assert.True(t, HasKubelikeComponent(workspaceWithK8sComponents))
+}
+
+func TestHandleKubernetesComponentsRestrictsPodFields(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	podInline := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"securityContext":{"runAsUser":0},"containers":[{"name":"c","image":"img"}]}}`
+	testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	api := sync.ClusterAPI{
+		Client: testClient,
+		Scheme: testScheme,
+		Logger: testr.New(t),
+	}
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+		Config: &controllerv1alpha1.OperatorConfiguration{
+			Workspace: &controllerv1alpha1.WorkspaceConfig{
+				Overrides: &controllerv1alpha1.OverrideConfig{
+					RestrictedPodOverrideFields: []string{"securityContext.runAsUser"},
+				},
+			},
+		},
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod"]`,
+	}
+	wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+		Name: "test-pod",
+		ComponentUnion: dw.ComponentUnion{
+			Kubernetes: &dw.KubernetesComponent{
+				K8sLikeComponent: dw.K8sLikeComponent{
+					DeployByDefault: pointer.BoolPtr(true),
+					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+						Inlined: podInline,
+					},
+				},
+			},
+		},
+	})
+
+	err := HandleKubernetesComponents(wksp, api)
+	assert.Error(t, err)
+
+	failErr := &dwerrors.FailError{}
+	assert.True(t, errors.As(err, &failErr), "Expected FailError, got %T", err)
+	assert.Regexp(t, "could not process component test-pod", err.Error())
+}
+
+func TestHandleKubernetesComponentsRestrictsContainerFields(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	podInline := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img","securityContext":{"privileged":true}}]}}`
+	testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	api := sync.ClusterAPI{
+		Client: testClient,
+		Scheme: testScheme,
+		Logger: testr.New(t),
+	}
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+		Config: &controllerv1alpha1.OperatorConfiguration{
+			Workspace: &controllerv1alpha1.WorkspaceConfig{
+				Overrides: &controllerv1alpha1.OverrideConfig{
+					RestrictedContainerOverrideFields: []string{"securityContext.privileged"},
+				},
+			},
+		},
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod"]`,
+	}
+	wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+		Name: "test-pod",
+		ComponentUnion: dw.ComponentUnion{
+			Kubernetes: &dw.KubernetesComponent{
+				K8sLikeComponent: dw.K8sLikeComponent{
+					DeployByDefault: pointer.BoolPtr(true),
+					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+						Inlined: podInline,
+					},
+				},
+			},
+		},
+	})
+
+	err := HandleKubernetesComponents(wksp, api)
+	assert.Error(t, err)
+
+	failErr := &dwerrors.FailError{}
+	assert.True(t, errors.As(err, &failErr), "Expected FailError, got %T", err)
+	assert.Regexp(t, "could not process component test-pod", err.Error())
+}
+
+func TestHandleKubernetesComponentsAllowsNonRestrictedFields(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	podInline := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`
+	testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	api := sync.ClusterAPI{
+		Client: testClient,
+		Scheme: testScheme,
+		Logger: testr.New(t),
+	}
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+		Config: &controllerv1alpha1.OperatorConfiguration{
+			Workspace: &controllerv1alpha1.WorkspaceConfig{
+				Overrides: &controllerv1alpha1.OverrideConfig{
+					RestrictedPodOverrideFields:       []string{"securityContext.runAsUser"},
+					RestrictedContainerOverrideFields: []string{"securityContext.privileged"},
+				},
+			},
+		},
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod"]`,
+	}
+	wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+		Name: "test-pod",
+		ComponentUnion: dw.ComponentUnion{
+			Kubernetes: &dw.KubernetesComponent{
+				K8sLikeComponent: dw.K8sLikeComponent{
+					DeployByDefault: pointer.BoolPtr(true),
+					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+						Inlined: podInline,
+					},
+				},
+			},
+		},
+	})
+
+	var err error
+	retryErr := &dwerrors.RetryError{}
+	for err = HandleKubernetesComponents(wksp, api); errors.As(err, &retryErr); err = HandleKubernetesComponents(wksp, api) {
+	}
+	assert.NoError(t, err)
+
+	clusterPod := &corev1.Pod{}
+	err = testClient.Get(api.Ctx, types.NamespacedName{Name: "test-pod", Namespace: wksp.Namespace}, clusterPod)
+	assert.NoError(t, err, "Expected pod to be created on cluster")
+}
+
+func TestHandleKubernetesComponentsNoRestrictionsConfigured(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	podInline := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"securityContext":{"runAsUser":0},"containers":[{"name":"c","image":"img","securityContext":{"privileged":true}}]}}`
+	testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	api := sync.ClusterAPI{
+		Client: testClient,
+		Scheme: testScheme,
+		Logger: testr.New(t),
+	}
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod"]`,
+	}
+	wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+		Name: "test-pod",
+		ComponentUnion: dw.ComponentUnion{
+			Kubernetes: &dw.KubernetesComponent{
+				K8sLikeComponent: dw.K8sLikeComponent{
+					DeployByDefault: pointer.BoolPtr(true),
+					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+						Inlined: podInline,
+					},
+				},
+			},
+		},
+	})
+
+	var err error
+	retryErr := &dwerrors.RetryError{}
+	for err = HandleKubernetesComponents(wksp, api); errors.As(err, &retryErr); err = HandleKubernetesComponents(wksp, api) {
+	}
+	assert.NoError(t, err)
+
+	clusterPod := &corev1.Pod{}
+	err = testClient.Get(api.Ctx, types.NamespacedName{Name: "test-pod", Namespace: wksp.Namespace}, clusterPod)
+	assert.NoError(t, err, "Expected pod to be created on cluster")
+}
+
+func TestHandleKubernetesComponentsRejectsRBACObjects(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	rbacTests := []struct {
+		name   string
+		inline string
+	}{
+		{
+			name:   "Role",
+			inline: `{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"test-role"},"rules":[{"apiGroups":[""],"resources":["pods"],"verbs":["get"]}]}`,
+		},
+		{
+			name:   "RoleBinding",
+			inline: `{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"test-rolebinding"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"Role","name":"test-role"},"subjects":[{"kind":"ServiceAccount","name":"default"}]}`,
+		},
+		{
+			name:   "ClusterRole",
+			inline: `{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"name":"test-clusterrole"},"rules":[{"apiGroups":[""],"resources":["pods"],"verbs":["get"]}]}`,
+		},
+		{
+			name:   "ClusterRoleBinding",
+			inline: `{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRoleBinding","metadata":{"name":"test-clusterrolebinding"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"ClusterRole","name":"test-clusterrole"},"subjects":[{"kind":"ServiceAccount","name":"default"}]}`,
+		},
+	}
+
+	for _, tt := range rbacTests {
+		t.Run(tt.name, func(t *testing.T) {
+			testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+			api := sync.ClusterAPI{
+				Client: testClient,
+				Scheme: testScheme,
+				Logger: testr.New(t),
+			}
+
+			wksp := &common.DevWorkspaceWithConfig{
+				DevWorkspace: testDevWorkspace.DeepCopy(),
+			}
+
+			wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+				Name: "test-rbac",
+				ComponentUnion: dw.ComponentUnion{
+					Kubernetes: &dw.KubernetesComponent{
+						K8sLikeComponent: dw.K8sLikeComponent{
+							DeployByDefault: ptr.To(true),
+							K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+								Inlined: tt.inline,
+							},
+						},
+					},
+				},
+			})
+
+			err := HandleKubernetesComponents(wksp, api)
+			assert.Error(t, err)
+
+			failErr := &dwerrors.FailError{}
+			assert.True(t, errors.As(err, &failErr), "Expected FailError, got %T", err)
+			assert.Regexp(t, "could not process component test-rbac", err.Error())
+			assert.Contains(t, err.Error(), "RBAC objects are not permitted")
+		})
+	}
+}
+
+func TestRestrictK8sComponentAllowsValidatedResource(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	obj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod"]`,
+	}
+
+	err = restrictK8sComponent(wksp, obj)
+	assert.NoError(t, err)
+}
+
+func TestRestrictK8sComponentRejectsNonValidatedResource(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	obj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Service"]`,
+	}
+
+	err = restrictK8sComponent(wksp, obj)
+	assert.Error(t, err)
+}
+
+func TestRestrictK8sComponentRejectsRBACEvenWhenValidated(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	obj, err := DeserializeToObject([]byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"test-role"},"rules":[{"apiGroups":[""],"resources":["pods"],"verbs":["get"]}]}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["rbac.authorization.k8s.io/v1, Kind=Role"]`,
+	}
+
+	err = restrictK8sComponent(wksp, obj)
+	assert.Error(t, err)
+}
+
+func TestRestrictK8sComponentRejectsMalformedAnnotation(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	obj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `not-valid-json`,
+	}
+
+	err = restrictK8sComponent(wksp, obj)
+	assert.Error(t, err)
+}
+
+func TestRestrictK8sComponentAllowsMultipleValidatedResources(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	podObj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`))
+	assert.NoError(t, err)
+
+	svcObj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Service","metadata":{"name":"test-svc"},"spec":{"selector":{"app":"test"},"ports":[{"port":8080}]}}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	wksp.Annotations = map[string]string{
+		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod", "/v1, Kind=Service"]`,
+	}
+
+	assert.NoError(t, restrictK8sComponent(wksp, podObj))
+	assert.NoError(t, restrictK8sComponent(wksp, svcObj))
 }
 
 func loadAllTestCasesOrPanic(t *testing.T, fromDir string) []testCase {

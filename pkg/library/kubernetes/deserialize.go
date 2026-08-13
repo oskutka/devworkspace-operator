@@ -17,7 +17,6 @@ import (
 	"fmt"
 	gosync "sync"
 
-	"github.com/devfile/devworkspace-operator/pkg/provision/sync"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,11 +37,11 @@ func InitializeDeserializer(scheme *runtime.Scheme) error {
 	return nil
 }
 
-func deserializeToObject(jsonObj []byte, api sync.ClusterAPI) (client.Object, error) {
+func DeserializeToObject(data []byte) (client.Object, error) {
 	if decoder == nil {
 		return nil, fmt.Errorf("kubernetes object deserializer is not initialized")
 	}
-	obj, _, err := decoder.Decode(jsonObj, nil, nil)
+	obj, _, err := decoder.Decode(data, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +50,6 @@ func deserializeToObject(jsonObj []byte, api sync.ClusterAPI) (client.Object, er
 	}
 	clientObj, ok := obj.(client.Object)
 	if !ok {
-		// Should never occur but to avoid a panic
 		return nil, fmt.Errorf("object does not have standard metadata and cannot be processed")
 	}
 	return clientObj, nil

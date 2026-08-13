@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/devfile/devworkspace-operator/pkg/httpfactory"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
 	"github.com/devfile/devworkspace-operator/controllers/controller/devworkspacerouting"
@@ -143,6 +144,12 @@ func main() {
 	}
 	if err = setupControllerConfig(mgr); err != nil {
 		setupLog.Error(err, "unable to read controller configuration")
+		os.Exit(1)
+	}
+
+	err = httpfactory.SetupHttpClientsFactory(mgr.GetClient(), mgr.GetLogger())
+	if err != nil {
+		setupLog.Error(err, "Failed to setup Http clients factory")
 		os.Exit(1)
 	}
 
