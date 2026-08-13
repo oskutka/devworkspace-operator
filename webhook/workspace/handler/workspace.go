@@ -308,38 +308,26 @@ func setValidatedPermissionsAnnotations(
 	validatedSCC string,
 	validatedKubernetesResources []string,
 ) (bool, error) {
-	sort.Strings(validatedKubernetesResources)
-
-	validatedKubernetesResourcesStr := ""
+	validatedKubernetesResourcesStr := "[]"
 	if len(validatedKubernetesResources) > 0 {
+		sort.Strings(validatedKubernetesResources)
+
 		bytes, err := json.Marshal(validatedKubernetesResources)
 		if err != nil {
 			return false, fmt.Errorf("failed to marshal validated kubernetes resources: %w", err)
 		}
+
 		validatedKubernetesResourcesStr = string(bytes)
 	}
 
-	changed := setOrDeleteAnnotation(workspace, constants.DevWorkspaceValidatedSCCAnnotation, validatedSCC)
+	changed := workspace.Annotations[constants.DevWorkspaceValidatedSCCAnnotation] != validatedSCC
 	changed = changed ||
-		setOrDeleteAnnotation(workspace, constants.DevWorkspaceValidatedK8sResourcesAnnotation, validatedKubernetesResourcesStr)
+		workspace.Annotations[constants.DevWorkspaceValidatedK8sResourcesAnnotation] != validatedKubernetesResourcesStr
+
+	workspace.Annotations = maputils.Append(workspace.Annotations, constants.DevWorkspaceValidatedSCCAnnotation, validatedSCC)
+	workspace.Annotations = maputils.Append(workspace.Annotations, constants.DevWorkspaceValidatedK8sResourcesAnnotation, validatedKubernetesResourcesStr)
 
 	return changed, nil
-}
-
-func setOrDeleteAnnotation(workspace *dwv2.DevWorkspace, key, newValue string) bool {
-	oldValue, oldValueExists := workspace.Annotations[key]
-
-	if newValue == "" {
-		if len(workspace.Annotations) == 0 {
-			return false
-		}
-		delete(workspace.Annotations, key)
-
-		return oldValueExists
-	}
-
-	workspace.Annotations = maputils.Append(workspace.Annotations, key, newValue)
-	return oldValue != newValue
 }
 
 func hasFinalizer(obj client.Object, finalizer string) bool {

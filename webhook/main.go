@@ -27,6 +27,7 @@ import (
 	controllerv1alpha1 "github.com/devfile/devworkspace-operator/apis/controller/v1alpha1"
 	"github.com/devfile/devworkspace-operator/pkg/httpfactory"
 	kubesync "github.com/devfile/devworkspace-operator/pkg/library/kubernetes"
+	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	templatev1 "github.com/openshift/api/template/v1"
 	"k8s.io/utils/ptr"
@@ -79,10 +80,10 @@ func init() {
 	utilruntime.Must(dwv1.AddToScheme(scheme))
 	utilruntime.Must(dwv2.AddToScheme(scheme))
 
-	// For deserializer
 	if infrastructure.IsOpenShift() {
 		utilruntime.Must(routev1.Install(scheme))
 		utilruntime.Must(templatev1.Install(scheme))
+		utilruntime.Must(configv1.Install(scheme))
 	}
 }
 

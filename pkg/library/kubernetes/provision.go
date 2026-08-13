@@ -56,6 +56,13 @@ func HandleKubernetesComponents(workspace *common.DevWorkspaceWithConfig, api sy
 		return nil
 	}
 
+	var validatedK8sComponents []string
+	if data, ok := workspace.Annotations[constants.DevWorkspaceValidatedK8sResourcesAnnotation]; ok {
+		if err := json.Unmarshal([]byte(data), &validatedK8sComponents); err != nil {
+			return fmt.Errorf("failed to parse %s annotation: %w", constants.DevWorkspaceValidatedK8sResourcesAnnotation, err)
+		}
+	}
+
 	for _, component := range kubeComponents {
 		// Ignore error as we filtered list above
 		k8sLikeComponent, _ := getK8sLikeComponent(component)
@@ -64,7 +71,7 @@ func HandleKubernetesComponents(workspace *common.DevWorkspaceWithConfig, api sy
 			return &dwerrors.FailError{Message: fmt.Sprintf("could not process component %s", component.Name), Err: err}
 		}
 
-		err = restrictK8sComponent(workspace, obj)
+		err = restrictK8sComponent(workspace, obj, validatedK8sComponents)
 		if err != nil {
 			return &dwerrors.FailError{Message: fmt.Sprintf("could not process component %s", component.Name), Err: err}
 		}
@@ -138,14 +145,7 @@ func addMetadata(obj client.Object, workspace *common.DevWorkspaceWithConfig, ap
 	return nil
 }
 
-func restrictK8sComponent(workspace *common.DevWorkspaceWithConfig, obj client.Object) error {
-	var validatedK8sComponents []string
-	if raw := workspace.Annotations[constants.DevWorkspaceValidatedK8sResourcesAnnotation]; raw != "" {
-		if err := json.Unmarshal([]byte(raw), &validatedK8sComponents); err != nil {
-			return fmt.Errorf("failed to parse %s annotation: %w", constants.DevWorkspaceValidatedK8sResourcesAnnotation, err)
-		}
-	}
-
+func restrictK8sComponent(workspace *common.DevWorkspaceWithConfig, obj client.Object, validatedK8sComponents []string) error {
 	gvk := obj.GetObjectKind().GroupVersionKind()
 	switch gvk {
 	case
@@ -159,11 +159,9 @@ func restrictK8sComponent(workspace *common.DevWorkspaceWithConfig, obj client.O
 		dw.SchemeGroupVersion.WithKind("DevWorkspaceTemplate"):
 		return fmt.Errorf("DevWorkspace objects are not permitted within DevWorkspace components")
 	default:
-		// For backward compatibility, skip the validation for already-running workspaces since the
-		// annotation may not be present on workspaces created before this check was introduced.
-		// Note: workspaces that are being started just after DWO is updated may fail to start
-		// if the webhook has not re-validated them, as the annotation will be absent.
-		if workspace.Status.Phase != dw.DevWorkspaceStatusRunning {
+		// For backward compatibility, skip the validation when the annotation is absent, as it
+		// may not be present on workspaces created before this check was introduced.
+		if validatedK8sComponents != nil {
 			if !slices.Contains(validatedK8sComponents, gvk.String()) {
 				return fmt.Errorf("user is not authorized to create %s resources", gvk.Kind)
 			}

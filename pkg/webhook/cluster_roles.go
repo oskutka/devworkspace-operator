@@ -163,6 +163,33 @@ func getSpecClusterRole() (*v1.ClusterRole, error) {
 					"get",
 				},
 			},
+			{
+				APIGroups: []string{
+					"route.openshift.io",
+				},
+				Resources: []string{
+					"routes",
+				},
+				Verbs: []string{
+					"create",
+					"get",
+					"delete",
+				},
+			},
+			{
+				APIGroups: []string{
+					"config.openshift.io",
+				},
+				Resources: []string{
+					"proxies",
+				},
+				ResourceNames: []string{
+					"cluster",
+				},
+				Verbs: []string{
+					"get",
+				},
+			},
 		},
 	}
 
