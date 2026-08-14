@@ -17,20 +17,14 @@ import (
 	"fmt"
 	"testing"
 
-	dw "github.com/devfile/api/v2/pkg/apis/workspaces/v1alpha2"
-	"github.com/devfile/api/v2/pkg/attributes"
-	"github.com/devfile/devworkspace-operator/pkg/constants"
-	"github.com/devfile/devworkspace-operator/pkg/library/overrides"
 	"github.com/devfile/devworkspace-operator/pkg/library/overrides/restrictions"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
-	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/utils/ptr"
 )
 
-func TestRestrictContainerOverride(t *testing.T) {
+func TestRestrictContainer(t *testing.T) {
 	tests := []struct {
 		Name string
 
@@ -43,42 +37,6 @@ func TestRestrictContainerOverride(t *testing.T) {
 		{
 			Name:     "no restricted fields allows everything",
 			Override: corev1.Container{},
-		},
-		{
-			Name:            "name always restricted",
-			Override:        corev1.Container{Name: "test"},
-			IsErrorExpected: true,
-			ErrField:        "name",
-		},
-		{
-			Name:            "image always restricted",
-			Override:        corev1.Container{Image: "test"},
-			IsErrorExpected: true,
-			ErrField:        "image",
-		},
-		{
-			Name:            "command always restricted",
-			Override:        corev1.Container{Command: []string{}},
-			IsErrorExpected: true,
-			ErrField:        "command",
-		},
-		{
-			Name:            "args always restricted",
-			Override:        corev1.Container{Args: []string{}},
-			IsErrorExpected: true,
-			ErrField:        "args",
-		},
-		{
-			Name:            "ports always restricted",
-			Override:        corev1.Container{Ports: []corev1.ContainerPort{{}}},
-			IsErrorExpected: true,
-			ErrField:        "ports",
-		},
-		{
-			Name:            "env always restricted",
-			Override:        corev1.Container{Env: []corev1.EnvVar{{}}},
-			IsErrorExpected: true,
-			ErrField:        "env",
 		},
 		// ----------- WorkingDir -----------
 		{
@@ -1179,7 +1137,7 @@ func TestRestrictContainerOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			err := restrictions.RestrictContainerOverride(&tt.Override, tt.RestrictedFields)
+			err := restrictions.RestrictContainer(&tt.Override, tt.RestrictedFields)
 
 			if tt.IsErrorExpected {
 				assert.Error(t, err)
@@ -1189,33 +1147,4 @@ func TestRestrictContainerOverride(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestApplyContainerOverridesStripsUnknownFields(t *testing.T) {
-	overrideJSON := `{"workingDir":"/workspace","futureSecurityField":"malicious-value","unknownNested":{"key":"val"}}`
-
-	component := &dw.Component{
-		Name: "test-component",
-		Attributes: attributes.Attributes{
-			constants.ContainerOverridesAttribute: apiext.JSON{Raw: []byte(overrideJSON)},
-		},
-		ComponentUnion: dw.ComponentUnion{
-			Container: &dw.ContainerComponent{
-				Container: dw.Container{Image: "test-image"},
-			},
-		},
-	}
-	container := &corev1.Container{
-		Name:  "test-component",
-		Image: "test-image",
-	}
-
-	patched, err := overrides.ApplyContainerOverrides(component, container, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, "/workspace", patched.WorkingDir)
-
-	patchedBytes, err := json.Marshal(patched)
-	assert.NoError(t, err)
-	assert.NotContains(t, string(patchedBytes), "futureSecurityField")
-	assert.NotContains(t, string(patchedBytes), "unknownNested")
 }

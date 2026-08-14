@@ -24,29 +24,6 @@ func getContainerRestrictionErr(msg string) error {
 	return fmt.Errorf("restricted container field set %s", msg)
 }
 
-func RestrictContainerOverride(override *corev1.Container, restrictedFields []string) error {
-	if override.Name != "" {
-		return getContainerRestrictionErr("name")
-	}
-	if override.Image != "" {
-		return getContainerRestrictionErr("image")
-	}
-	if override.Command != nil {
-		return getContainerRestrictionErr("command")
-	}
-	if override.Args != nil {
-		return getContainerRestrictionErr("args")
-	}
-	if override.Ports != nil {
-		return getContainerRestrictionErr("ports")
-	}
-	if override.Env != nil {
-		return getContainerRestrictionErr("env")
-	}
-
-	return RestrictContainer(override, restrictedFields)
-}
-
 func RestrictContainer(container *corev1.Container, restrictedFields []string) error {
 	for _, restrictedField := range restrictedFields {
 		fieldName, fieldValue, _ := strings.Cut(restrictedField, "=")

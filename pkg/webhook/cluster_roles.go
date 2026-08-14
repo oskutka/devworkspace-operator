@@ -197,4 +197,3 @@ func getExistingClusterRole(ctx context.Context, client crclient.Client) (*v1.Cl
 	}
 	return clusterRole, nil
 }
-

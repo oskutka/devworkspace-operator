@@ -24,17 +24,6 @@ func getPodRestrictionErr(msg string) error {
 	return fmt.Errorf("restricted pod field set %s", msg)
 }
 
-func RestrictPodOverride(override *corev1.PodSpec, restrictedFields []string) error {
-	if override.Containers != nil {
-		return getPodRestrictionErr("containers")
-	}
-	if override.InitContainers != nil {
-		return getPodRestrictionErr("initContainers")
-	}
-
-	return RestrictPod(override, restrictedFields)
-}
-
 func RestrictPod(pod *corev1.PodSpec, restrictedFields []string) error {
 	for _, field := range restrictedFields {
 		fieldName, fieldValue, _ := strings.Cut(field, "=")

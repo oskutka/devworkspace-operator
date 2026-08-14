@@ -113,7 +113,7 @@ func getPodOverrides(workspace *dw.DevWorkspaceTemplateSpec, restrictedFields []
 			if err := component.Attributes.GetInto(constants.PodOverridesAttribute, &override); err != nil {
 				return nil, fmt.Errorf("failed to parse %s attribute on component %s: %w", constants.PodOverridesAttribute, component.Name, err)
 			}
-			if err := restrictions.RestrictPodOverride(&override.Spec, restrictedFields); err != nil {
+			if err := restrictPodOverride(&override.Spec, restrictedFields); err != nil {
 				return nil, fmt.Errorf("invalid %s attribute on component %s: %w", constants.PodOverridesAttribute, component.Name, err)
 			}
 			patchData := component.Attributes[constants.PodOverridesAttribute]
@@ -126,11 +126,22 @@ func getPodOverrides(workspace *dw.DevWorkspaceTemplateSpec, restrictedFields []
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse %s attribute for workspace: %w", constants.PodOverridesAttribute, err)
 		}
-		if err := restrictions.RestrictPodOverride(&override.Spec, restrictedFields); err != nil {
+		if err := restrictPodOverride(&override.Spec, restrictedFields); err != nil {
 			return nil, fmt.Errorf("invalid %s attribute for workspace: %w", constants.PodOverridesAttribute, err)
 		}
 		patchData := workspace.Attributes[constants.PodOverridesAttribute]
 		allOverrides = append(allOverrides, patchData)
 	}
 	return allOverrides, nil
+}
+
+func restrictPodOverride(override *corev1.PodSpec, restrictedFields []string) error {
+	if override.Containers != nil {
+		return fmt.Errorf("restricted pod field set containers")
+	}
+	if override.InitContainers != nil {
+		return fmt.Errorf("restricted pod field set initContainers")
+	}
+
+	return restrictions.RestrictPod(override, restrictedFields)
 }

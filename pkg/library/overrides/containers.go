@@ -44,7 +44,7 @@ func ApplyContainerOverrides(component *dw.Component, container *corev1.Containe
 	if err := component.Attributes.GetInto(constants.ContainerOverridesAttribute, override); err != nil {
 		return nil, fmt.Errorf("failed to parse %s attribute on component %s: %w", constants.ContainerOverridesAttribute, component.Name, err)
 	}
-	if err := restrictions.RestrictContainerOverride(override, restrictedFields); err != nil {
+	if err := restrictContainerOverride(override, restrictedFields); err != nil {
 		return nil, fmt.Errorf("invalid %s attribute on component %s: %w", constants.ContainerOverridesAttribute, component.Name, err)
 	}
 
@@ -73,6 +73,29 @@ func ApplyContainerOverrides(component *dw.Component, container *corev1.Containe
 	handleDefaultedContainerFields(patched)
 
 	return patched, nil
+}
+
+func restrictContainerOverride(override *corev1.Container, restrictedFields []string) error {
+	if override.Name != "" {
+		return fmt.Errorf("restricted container field set name")
+	}
+	if override.Image != "" {
+		return fmt.Errorf("restricted container field set image")
+	}
+	if override.Command != nil {
+		return fmt.Errorf("restricted container field set command")
+	}
+	if override.Args != nil {
+		return fmt.Errorf("restricted container field set args")
+	}
+	if override.Ports != nil {
+		return fmt.Errorf("restricted container field set ports")
+	}
+	if override.Env != nil {
+		return fmt.Errorf("restricted container field set env")
+	}
+
+	return restrictions.RestrictContainer(override, restrictedFields)
 }
 
 // handleDefaultedContainerFields fills partially-filled structs with defaulted fields
