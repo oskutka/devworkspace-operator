@@ -161,6 +161,7 @@ func getSpecClusterRole() (*v1.ClusterRole, error) {
 				},
 				Verbs: []string{
 					"get",
+					"list",
 				},
 			},
 			{
