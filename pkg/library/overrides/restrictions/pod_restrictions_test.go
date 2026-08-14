@@ -11,13 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package restrictions_test
+package restrictions
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/devfile/devworkspace-operator/pkg/library/overrides/restrictions"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -1426,7 +1425,7 @@ func TestRestrictPod(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			err := restrictions.RestrictPod(&tt.Override, tt.RestrictedFields)
+			err := RestrictPod(&tt.Override, tt.RestrictedFields)
 
 			if tt.IsErrorExpected {
 				assert.Error(t, err)
