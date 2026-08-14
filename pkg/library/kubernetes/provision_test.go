@@ -515,11 +515,8 @@ func TestRestrictK8sComponentAllowsValidatedResource(t *testing.T) {
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
 	}
-	wksp.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod"]`,
-	}
 
-	err = restrictK8sComponent(wksp, obj)
+	err = restrictK8sComponent(wksp, obj, []string{"/v1, Kind=Pod"})
 	assert.NoError(t, err)
 }
 
@@ -535,11 +532,8 @@ func TestRestrictK8sComponentRejectsNonValidatedResource(t *testing.T) {
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
 	}
-	wksp.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Service"]`,
-	}
 
-	err = restrictK8sComponent(wksp, obj)
+	err = restrictK8sComponent(wksp, obj, []string{})
 	assert.Error(t, err)
 }
 
@@ -555,31 +549,45 @@ func TestRestrictK8sComponentRejectsRBACEvenWhenValidated(t *testing.T) {
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
 	}
-	wksp.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["rbac.authorization.k8s.io/v1, Kind=Role"]`,
-	}
 
-	err = restrictK8sComponent(wksp, obj)
+	err = restrictK8sComponent(wksp, obj, []string{"rbac.authorization.k8s.io/v1, Kind=Role"})
 	assert.Error(t, err)
 }
 
-func TestRestrictK8sComponentRejectsMalformedAnnotation(t *testing.T) {
+func TestHandleKubernetesComponentsRejectsMalformedAnnotation(t *testing.T) {
 	if err := InitializeDeserializer(testScheme); err != nil {
 		t.Fatalf("Unexpected error: %s", err)
 	}
 	defer func() { decoder = nil }()
 
-	obj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`))
-	assert.NoError(t, err)
-
+	podInline := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`
+	testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	api := sync.ClusterAPI{
+		Client: testClient,
+		Scheme: testScheme,
+		Logger: testr.New(t),
+	}
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
 	}
 	wksp.Annotations = map[string]string{
 		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `not-valid-json`,
 	}
+	wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+		Name: "test-pod",
+		ComponentUnion: dw.ComponentUnion{
+			Kubernetes: &dw.KubernetesComponent{
+				K8sLikeComponent: dw.K8sLikeComponent{
+					DeployByDefault: pointer.BoolPtr(true),
+					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+						Inlined: podInline,
+					},
+				},
+			},
+		},
+	})
 
-	err = restrictK8sComponent(wksp, obj)
+	err := HandleKubernetesComponents(wksp, api)
 	assert.Error(t, err)
 }
 
@@ -598,12 +606,10 @@ func TestRestrictK8sComponentAllowsMultipleValidatedResources(t *testing.T) {
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
 	}
-	wksp.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod", "/v1, Kind=Service"]`,
-	}
 
-	assert.NoError(t, restrictK8sComponent(wksp, podObj))
-	assert.NoError(t, restrictK8sComponent(wksp, svcObj))
+	validatedResources := []string{"/v1, Kind=Pod", "/v1, Kind=Service"}
+	assert.NoError(t, restrictK8sComponent(wksp, podObj, validatedResources))
+	assert.NoError(t, restrictK8sComponent(wksp, svcObj, validatedResources))
 }
 
 func loadAllTestCasesOrPanic(t *testing.T, fromDir string) []testCase {

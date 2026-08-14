@@ -29,6 +29,7 @@ import (
 	"github.com/devfile/devworkspace-operator/pkg/config"
 	"github.com/devfile/devworkspace-operator/pkg/constants"
 	"github.com/devfile/devworkspace-operator/pkg/httpfactory"
+	"github.com/devfile/devworkspace-operator/pkg/infrastructure"
 	wsDefaults "github.com/devfile/devworkspace-operator/pkg/library/defaults"
 	"github.com/devfile/devworkspace-operator/pkg/library/flatten"
 	"k8s.io/utils/ptr"
@@ -320,11 +321,14 @@ func setValidatedPermissionsAnnotations(
 		validatedKubernetesResourcesStr = string(bytes)
 	}
 
-	changed := workspace.Annotations[constants.DevWorkspaceValidatedSCCAnnotation] != validatedSCC
+	changed := false
+	if infrastructure.IsOpenShift() {
+		changed = workspace.Annotations[constants.DevWorkspaceValidatedSCCAnnotation] != validatedSCC
+		workspace.Annotations = maputils.Append(workspace.Annotations, constants.DevWorkspaceValidatedSCCAnnotation, validatedSCC)
+	}
+
 	changed = changed ||
 		workspace.Annotations[constants.DevWorkspaceValidatedK8sResourcesAnnotation] != validatedKubernetesResourcesStr
-
-	workspace.Annotations = maputils.Append(workspace.Annotations, constants.DevWorkspaceValidatedSCCAnnotation, validatedSCC)
 	workspace.Annotations = maputils.Append(workspace.Annotations, constants.DevWorkspaceValidatedK8sResourcesAnnotation, validatedKubernetesResourcesStr)
 
 	return changed, nil
