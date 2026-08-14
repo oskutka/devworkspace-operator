@@ -55,9 +55,9 @@ func HandleKubernetesComponents(workspace *common.DevWorkspaceWithConfig, api sy
 		return nil
 	}
 
-	var validatedK8sComponents []string
+	var validatedK8sResources []string
 	if data, ok := workspace.Annotations[constants.DevWorkspaceValidatedK8sResourcesAnnotation]; ok {
-		if err := json.Unmarshal([]byte(data), &validatedK8sComponents); err != nil {
+		if err := json.Unmarshal([]byte(data), &validatedK8sResources); err != nil {
 			return &dwerrors.FailError{Message: fmt.Sprintf("failed to parse %s annotation", constants.DevWorkspaceValidatedK8sResourcesAnnotation), Err: err}
 		}
 	}
@@ -70,7 +70,7 @@ func HandleKubernetesComponents(workspace *common.DevWorkspaceWithConfig, api sy
 			return &dwerrors.FailError{Message: fmt.Sprintf("could not process component %s", component.Name), Err: err}
 		}
 
-		err = restrictK8sComponent(workspace, obj, validatedK8sComponents)
+		err = restrictK8sComponent(workspace, obj, validatedK8sResources)
 		if err != nil {
 			return &dwerrors.FailError{Message: fmt.Sprintf("could not process component %s", component.Name), Err: err}
 		}
@@ -144,7 +144,7 @@ func addMetadata(obj client.Object, workspace *common.DevWorkspaceWithConfig, ap
 	return nil
 }
 
-func restrictK8sComponent(workspace *common.DevWorkspaceWithConfig, obj client.Object, validatedK8sComponents []string) error {
+func restrictK8sComponent(workspace *common.DevWorkspaceWithConfig, obj client.Object, validatedK8sResources []string) error {
 	gvk := obj.GetObjectKind().GroupVersionKind()
 	switch gvk {
 	case
@@ -160,8 +160,8 @@ func restrictK8sComponent(workspace *common.DevWorkspaceWithConfig, obj client.O
 	default:
 		// For backward compatibility, skip the validation when the annotation is absent, as it
 		// may not be present on workspaces created before this check was introduced.
-		if validatedK8sComponents != nil {
-			if !slices.Contains(validatedK8sComponents, gvk.String()) {
+		if validatedK8sResources != nil {
+			if !slices.Contains(validatedK8sResources, gvk.String()) {
 				return fmt.Errorf("user is not authorized to create %s resources", gvk.Kind)
 			}
 		}
