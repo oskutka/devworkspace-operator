@@ -243,10 +243,6 @@ func (h *WebhookHandler) ValidateWorkspaceV1alpha2Permissions(
 		newWorkspaceTemplate = &newWorkspace.Spec.Template
 	}
 
-	// Passing the unresolved oldWorkspace is sufficient here. The validation check prefers the
-	// `controller.devfile.io/validated-scc` annotation (which already reflects the resolved/flattened
-	// spec from the previous webhook call) and only falls back to the raw SCC attribute for backward
-	// compatibility with workspaces created before the annotation was introduced.
 	validatedSCC, err := h.validateUserPermissions(ctx, req, newWorkspaceTemplate, oldWorkspace)
 	if err != nil {
 		return false, nil, err

@@ -106,9 +106,6 @@ func TestHandleKubernetesComponents(t *testing.T) {
 			wksp := &common.DevWorkspaceWithConfig{
 				DevWorkspace: testDevWorkspace.DeepCopy(),
 			}
-			wksp.Annotations = map[string]string{
-				constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=Pod", "/v1, Kind=Service"]`,
-			}
 			wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, tt.Input.Components...)
 			// Repeat function as long as it returns RetryError
 			i := 0
@@ -166,9 +163,6 @@ func TestSecretAndConfigMapProvisioning(t *testing.T) {
 	}
 	wksp := &common.DevWorkspaceWithConfig{
 		DevWorkspace: testDevWorkspace.DeepCopy(),
-	}
-	wksp.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedK8sResourcesAnnotation: `["/v1, Kind=ConfigMap", "/v1, Kind=Secret"]`,
 	}
 	cmInline := `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"test-configmap"},"data":{"test":"data"}}`
 	secretInline := `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"test-secret"},"data":{"test":"dGVzdAo="}}`
