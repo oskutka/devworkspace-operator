@@ -58,7 +58,7 @@ func HandleKubernetesComponents(workspace *common.DevWorkspaceWithConfig, api sy
 	var validatedK8sComponents []string
 	if data, ok := workspace.Annotations[constants.DevWorkspaceValidatedK8sResourcesAnnotation]; ok {
 		if err := json.Unmarshal([]byte(data), &validatedK8sComponents); err != nil {
-			return fmt.Errorf("failed to parse %s annotation: %w", constants.DevWorkspaceValidatedK8sResourcesAnnotation, err)
+			return &dwerrors.FailError{Message: fmt.Sprintf("failed to parse %s annotation", constants.DevWorkspaceValidatedK8sResourcesAnnotation), Err: err}
 		}
 	}
 
