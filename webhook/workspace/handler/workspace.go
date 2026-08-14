@@ -222,7 +222,13 @@ func (h *WebhookHandler) ValidateWorkspaceV1alpha2Permissions(
 ) (bool, *int32, error) {
 	newWorkspaceConfig, err := config.ResolveConfigForWorkspace(newWorkspace, h.Client)
 	if err != nil {
-		return false, ptr.To(int32(http.StatusBadRequest)), err
+		// When started=true, resolution must succeed — the controller will attempt to start
+		// the workspace, so reject early if the spec can't be fully resolved.
+		if newWorkspace.Spec.Started {
+			return false, ptr.To(int32(http.StatusBadRequest)), err
+		}
+
+		newWorkspaceConfig = config.GetGlobalConfig()
 	}
 
 	newWorkspaceTemplate, err := h.resolveDevWorkspace(
