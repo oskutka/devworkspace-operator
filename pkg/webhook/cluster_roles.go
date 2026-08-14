@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2019-2025 Red Hat, Inc.
+// Copyright (c) 2019-2026 Red Hat, Inc.
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -165,19 +165,6 @@ func getSpecClusterRole() (*v1.ClusterRole, error) {
 			},
 			{
 				APIGroups: []string{
-					"route.openshift.io",
-				},
-				Resources: []string{
-					"routes",
-				},
-				Verbs: []string{
-					"create",
-					"get",
-					"delete",
-				},
-			},
-			{
-				APIGroups: []string{
 					"config.openshift.io",
 				},
 				Resources: []string{
@@ -210,3 +197,4 @@ func getExistingClusterRole(ctx context.Context, client crclient.Client) (*v1.Cl
 	}
 	return clusterRole, nil
 }
+

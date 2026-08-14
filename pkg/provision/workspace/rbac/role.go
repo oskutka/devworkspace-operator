@@ -41,7 +41,9 @@ func syncRoles(workspace *common.DevWorkspaceWithConfig, api sync.ClusterAPI) er
 	// may not be present on workspaces created before this check was introduced.
 	if validatedSCCName, ok := workspace.Annotations[constants.DevWorkspaceValidatedSCCAnnotation]; ok {
 		if validatedSCCName != sccName {
-			return fmt.Errorf("user is not authorized to use SecurityContextConstraints '%s'", sccName)
+			return &dwerrors.FailError{
+				Message: fmt.Sprintf("user is not authorized to use SecurityContextConstraints '%s'", sccName),
+			}
 		}
 	}
 

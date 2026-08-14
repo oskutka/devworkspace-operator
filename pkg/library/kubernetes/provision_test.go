@@ -34,7 +34,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -179,7 +178,7 @@ func TestSecretAndConfigMapProvisioning(t *testing.T) {
 			ComponentUnion: dw.ComponentUnion{
 				Kubernetes: &dw.KubernetesComponent{
 					K8sLikeComponent: dw.K8sLikeComponent{
-						DeployByDefault: pointer.BoolPtr(true),
+						DeployByDefault: ptr.To(true),
 						K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 							Inlined: cmInline,
 						},
@@ -192,7 +191,7 @@ func TestSecretAndConfigMapProvisioning(t *testing.T) {
 			ComponentUnion: dw.ComponentUnion{
 				Kubernetes: &dw.KubernetesComponent{
 					K8sLikeComponent: dw.K8sLikeComponent{
-						DeployByDefault: pointer.BoolPtr(true),
+						DeployByDefault: ptr.To(true),
 						K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 							Inlined: secretInline,
 						},
@@ -276,7 +275,7 @@ func TestHandleKubernetesComponentsRestrictsPodFields(t *testing.T) {
 		ComponentUnion: dw.ComponentUnion{
 			Kubernetes: &dw.KubernetesComponent{
 				K8sLikeComponent: dw.K8sLikeComponent{
-					DeployByDefault: pointer.BoolPtr(true),
+					DeployByDefault: ptr.To(true),
 					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 						Inlined: podInline,
 					},
@@ -324,7 +323,7 @@ func TestHandleKubernetesComponentsRestrictsContainerFields(t *testing.T) {
 		ComponentUnion: dw.ComponentUnion{
 			Kubernetes: &dw.KubernetesComponent{
 				K8sLikeComponent: dw.K8sLikeComponent{
-					DeployByDefault: pointer.BoolPtr(true),
+					DeployByDefault: ptr.To(true),
 					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 						Inlined: podInline,
 					},
@@ -373,7 +372,7 @@ func TestHandleKubernetesComponentsAllowsNonRestrictedFields(t *testing.T) {
 		ComponentUnion: dw.ComponentUnion{
 			Kubernetes: &dw.KubernetesComponent{
 				K8sLikeComponent: dw.K8sLikeComponent{
-					DeployByDefault: pointer.BoolPtr(true),
+					DeployByDefault: ptr.To(true),
 					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 						Inlined: podInline,
 					},
@@ -417,7 +416,7 @@ func TestHandleKubernetesComponentsNoRestrictionsConfigured(t *testing.T) {
 		ComponentUnion: dw.ComponentUnion{
 			Kubernetes: &dw.KubernetesComponent{
 				K8sLikeComponent: dw.K8sLikeComponent{
-					DeployByDefault: pointer.BoolPtr(true),
+					DeployByDefault: ptr.To(true),
 					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 						Inlined: podInline,
 					},
@@ -578,7 +577,7 @@ func TestHandleKubernetesComponentsRejectsMalformedAnnotation(t *testing.T) {
 		ComponentUnion: dw.ComponentUnion{
 			Kubernetes: &dw.KubernetesComponent{
 				K8sLikeComponent: dw.K8sLikeComponent{
-					DeployByDefault: pointer.BoolPtr(true),
+					DeployByDefault: ptr.To(true),
 					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
 						Inlined: podInline,
 					},
@@ -589,6 +588,85 @@ func TestHandleKubernetesComponentsRejectsMalformedAnnotation(t *testing.T) {
 
 	err := HandleKubernetesComponents(wksp, api)
 	assert.Error(t, err)
+}
+
+func TestRestrictK8sComponentSkipsValidationWhenAnnotationAbsent(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	obj, err := DeserializeToObject([]byte(`{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+
+	// nil validatedK8sComponents simulates absent annotation (backward compat for pre-upgrade workspaces)
+	err = restrictK8sComponent(wksp, obj, nil)
+	assert.NoError(t, err)
+}
+
+func TestRestrictK8sComponentRejectsRBACEvenWhenAnnotationAbsent(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	obj, err := DeserializeToObject([]byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"test-role"},"rules":[{"apiGroups":[""],"resources":["pods"],"verbs":["get"]}]}`))
+	assert.NoError(t, err)
+
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+
+	// RBAC objects must be rejected even when annotation is absent
+	err = restrictK8sComponent(wksp, obj, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "RBAC objects are not permitted")
+}
+
+func TestHandleKubernetesComponentsWithoutAnnotation(t *testing.T) {
+	if err := InitializeDeserializer(testScheme); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	defer func() { decoder = nil }()
+
+	podInline := `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"test-pod"},"spec":{"containers":[{"name":"c","image":"img"}]}}`
+	testClient := fake.NewClientBuilder().WithScheme(testScheme).Build()
+	api := sync.ClusterAPI{
+		Client: testClient,
+		Scheme: testScheme,
+		Logger: testr.New(t),
+	}
+	wksp := &common.DevWorkspaceWithConfig{
+		DevWorkspace: testDevWorkspace.DeepCopy(),
+	}
+	// No validated-kubernetes-resources annotation set — simulates a pre-upgrade workspace
+	wksp.Spec.Template.Components = append(wksp.Spec.Template.Components, dw.Component{
+		Name: "test-pod",
+		ComponentUnion: dw.ComponentUnion{
+			Kubernetes: &dw.KubernetesComponent{
+				K8sLikeComponent: dw.K8sLikeComponent{
+					DeployByDefault: ptr.To(true),
+					K8sLikeComponentLocation: dw.K8sLikeComponentLocation{
+						Inlined: podInline,
+					},
+				},
+			},
+		},
+	})
+
+	var err error
+	retryErr := &dwerrors.RetryError{}
+	for err = HandleKubernetesComponents(wksp, api); errors.As(err, &retryErr); err = HandleKubernetesComponents(wksp, api) {
+	}
+	assert.NoError(t, err, "Should allow K8s components when annotation is absent (backward compat)")
+
+	clusterPod := &corev1.Pod{}
+	err = testClient.Get(api.Ctx, types.NamespacedName{Name: "test-pod", Namespace: wksp.Namespace}, clusterPod)
+	assert.NoError(t, err, "Expected pod to be created on cluster")
 }
 
 func TestRestrictK8sComponentAllowsMultipleValidatedResources(t *testing.T) {

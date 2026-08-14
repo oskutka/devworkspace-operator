@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2025 Red Hat, Inc.
+// Copyright (c) 2019-2026 Red Hat, Inc.
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -32,7 +32,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -102,7 +101,7 @@ func HandleKubernetesComponents(workspace *common.DevWorkspaceWithConfig, api sy
 
 func checkForExistingObject(obj client.Object, api sync.ClusterAPI) error {
 	objType := reflect.TypeOf(obj).Elem()
-	clusterObj := reflect.New(objType).Interface().(crclient.Object)
+	clusterObj := reflect.New(objType).Interface().(client.Object)
 	err := api.Client.Get(api.Ctx, client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}, clusterObj)
 	switch {
 	case err == nil:
