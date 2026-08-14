@@ -107,13 +107,7 @@ var (
 func TestSyncRBAC(t *testing.T) {
 	infrastructure.InitializeForTesting(infrastructure.Kubernetes)
 	testdw1 := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
-	testdw1.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedSCCAnnotation: testSCCName,
-	}
 	testdw2 := getTestDevWorkspaceWithAttributes(t, "test-devworkspace2", constants.WorkspaceSCCAttribute, testSCCName)
-	testdw2.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedSCCAnnotation: testSCCName,
-	}
 	testdw1SAName := common.ServiceAccountName(testdw1)
 	testdw2SAName := common.ServiceAccountName(testdw2)
 	api := getTestClusterAPI(t, testdw1.DevWorkspace, testdw2.DevWorkspace, oldRole, oldRolebinding)

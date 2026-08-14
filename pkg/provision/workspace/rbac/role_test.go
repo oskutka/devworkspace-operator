@@ -65,30 +65,6 @@ func TestDoesNothingIfRoleAlreadyInSync(t *testing.T) {
 	assert.NoError(t, err, "Should not return error if role is in sync")
 }
 
-func TestCreatesSCCRoleWhenAnnotationAbsent(t *testing.T) {
-	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
-	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
-	// No DevWorkspaceValidatedSCCAnnotation — simulates a pre-upgrade workspace
-	api := getTestClusterAPI(t, testdw.DevWorkspace)
-	retryErr := &dwerrors.RetryError{}
-	err := syncRoles(testdw, api)
-	if assert.Error(t, err, "Should return RetryError to indicate that role was created") {
-		assert.ErrorAs(t, err, &retryErr, "Error should have RetryError type")
-	}
-	err = syncRoles(testdw, api)
-	if assert.Error(t, err, "Should return RetryError to indicate that SCC role was created") {
-		assert.ErrorAs(t, err, &retryErr, "Error should have RetryError type")
-	}
-	err = syncRoles(testdw, api)
-	assert.NoError(t, err, "Should allow SCC role creation when annotation is absent (backward compat)")
-	actualRole := &rbacv1.Role{}
-	err = api.Client.Get(api.Ctx, types.NamespacedName{
-		Name:      common.WorkspaceSCCRoleName(testSCCName),
-		Namespace: testNamespace,
-	}, actualRole)
-	assert.NoError(t, err, "SCC Role should be created")
-}
-
 func TestRejectsSCCRoleWhenAnnotationMismatches(t *testing.T) {
 	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
 	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
@@ -108,12 +84,28 @@ func TestRejectsSCCRoleWhenAnnotationMismatches(t *testing.T) {
 	assert.Contains(t, err.Error(), "not authorized")
 }
 
-func TestCreatesSCCRoleIfNotExists(t *testing.T) {
+func TestRejectsSCCRoleWhenAnnotationEmpty(t *testing.T) {
 	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
 	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
 	testdw.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedSCCAnnotation: testSCCName,
+		constants.DevWorkspaceValidatedSCCAnnotation: "",
 	}
+	api := getTestClusterAPI(t, testdw.DevWorkspace)
+	retryErr := &dwerrors.RetryError{}
+	err := syncRoles(testdw, api)
+	if assert.Error(t, err, "Should return RetryError to indicate that default role was created") {
+		assert.ErrorAs(t, err, &retryErr, "Error should have RetryError type")
+	}
+	err = syncRoles(testdw, api)
+	assert.Error(t, err, "Should reject SCC role when annotation empty")
+	failErr := &dwerrors.FailError{}
+	assert.ErrorAs(t, err, &failErr, "Error should have FailError type")
+	assert.Contains(t, err.Error(), "not authorized")
+}
+
+func TestCreatesSCCRoleIfNotExists(t *testing.T) {
+	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
+	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
 	api := getTestClusterAPI(t, testdw.DevWorkspace)
 	retryErr := &dwerrors.RetryError{}
 	err := syncRoles(testdw, api)
@@ -137,9 +129,6 @@ func TestCreatesSCCRoleIfNotExists(t *testing.T) {
 func TestDoesNothingIfSCCRoleAlreadyInSync(t *testing.T) {
 	infrastructure.InitializeForTesting(infrastructure.OpenShiftv4)
 	testdw := getTestDevWorkspaceWithAttributes(t, "test-devworkspace", constants.WorkspaceSCCAttribute, testSCCName)
-	testdw.Annotations = map[string]string{
-		constants.DevWorkspaceValidatedSCCAnnotation: testSCCName,
-	}
 	api := getTestClusterAPI(t, testdw.DevWorkspace)
 	retryErr := &dwerrors.RetryError{}
 	err := syncRoles(testdw, api)

@@ -39,7 +39,7 @@ func (h *WebhookHandler) validateUserPermissions(
 	// `controller.devfile.io/validated-scc` annotation (which already reflects the resolved/flattened
 	// spec from the previous webhook call) and only falls back to the raw SCC attribute for backward
 	// compatibility with workspaces created before the annotation was introduced.
-	
+
 	if !newWksp.Attributes.Exists(constants.WorkspaceSCCAttribute) {
 		// Workspace is not requesting anything we need to check RBAC for.
 		return "", nil
