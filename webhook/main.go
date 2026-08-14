@@ -29,7 +29,6 @@ import (
 	kubesync "github.com/devfile/devworkspace-operator/pkg/library/kubernetes"
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
-	templatev1 "github.com/openshift/api/template/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -82,7 +81,6 @@ func init() {
 
 	if infrastructure.IsOpenShift() {
 		utilruntime.Must(routev1.Install(scheme))
-		utilruntime.Must(templatev1.Install(scheme))
 		utilruntime.Must(configv1.Install(scheme))
 	}
 }
@@ -160,8 +158,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Use nonCachedClient to read certificate CM once without caching
-	err = httpfactory.SetupHttpClientsFactory(nonCachedClient, mgr.GetLogger())
+	err = httpfactory.SetupHttpClientsFactory(mgr.GetClient(), mgr.GetLogger())
 	if err != nil {
 		log.Error(err, "Failed to setup Http clients factory")
 		os.Exit(1)
