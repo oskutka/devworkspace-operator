@@ -164,7 +164,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = setupConfigWatcher(mgr)
+	err = setupConfigCacheWatcher(mgr)
 	if err != nil {
 		log.Error(err, "Failed to setup config watcher")
 		os.Exit(1)
@@ -212,12 +212,12 @@ func createWebhooks(mgr manager.Manager) error {
 	return nil
 }
 
-func setupConfigWatcher(mgr ctrl.Manager) error {
+func setupConfigCacheWatcher(mgr ctrl.Manager) error {
 	emptyMapper := func(ctx context.Context, obj client.Object) []reconcile.Request {
 		return []reconcile.Request{}
 	}
 
-	// Do nothing, just for keeping DOWC up to date
+	// Do nothing, just for keeping DWOC up to date
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("dwoc-config-watcher").
 		WithOptions(controller.Options{
