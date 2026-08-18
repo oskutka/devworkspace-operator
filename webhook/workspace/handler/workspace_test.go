@@ -9,7 +9,7 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
-// limitations under the Licens1e.
+// limitations under the License.
 
 package handler
 
@@ -103,6 +103,7 @@ func TestMutateWorkspaceV1alpha2OnUpdate_StopInvalidWorkspaceIsAllowed(t *testin
 	resp := handler.MutateWorkspaceV1alpha2OnUpdate(context.Background(), req)
 
 	assert.True(t, resp.Allowed)
+	assert.NotEmpty(t, resp.Warnings, "expected a warning when stopping a workspace with permission errors")
 }
 
 func TestMutateWorkspaceV1alpha2OnUpdate_UpdateStartedInvalidWorkspaceIsDenied(t *testing.T) {

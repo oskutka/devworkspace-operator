@@ -152,6 +152,7 @@ func getSpecClusterRole() (*v1.ClusterRole, error) {
 					"watch",
 				},
 			},
+			// Needed for pkg/httpfactory/http.go:224
 			{
 				APIGroups: []string{
 					"",
@@ -164,6 +165,7 @@ func getSpecClusterRole() (*v1.ClusterRole, error) {
 					"list",
 				},
 			},
+			// Needed for pkg/config/sync.go:109 (SetupControllerConfig)
 			{
 				APIGroups: []string{
 					"config.openshift.io",
