@@ -98,9 +98,7 @@ func (h *WebhookHandler) validatePermissionsOnObject(
 
 	// Check that user has permissions to use the resource
 	for _, verb := range userVerbs {
-		log.Info("Validating permission", "resource", resourceType, "verb", verb)
 		if err := h.checkSAR(ctx, req, typeMeta, resourceType, verb, componentName); err != nil {
-			log.Error(err, "Failed to validate permission", "resource", resourceType, "verb", verb)
 			return err
 		}
 	}
