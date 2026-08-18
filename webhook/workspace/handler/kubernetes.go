@@ -43,7 +43,6 @@ func (h *WebhookHandler) validateKubernetesObjectPermissions(
 
 	kubeComponents := getKubeComponentsFromWorkspace(wksp)
 	for componentName, component := range kubeComponents {
-		log.Info("======================= Step 8")
 		if !component.GetDeployByDefault() {
 			// Intended to be applied later, will not be handled by DWO. It's up to whoever applies it to make
 			// sure that's safe to do (e.g. by using the user's token to apply the yaml)
@@ -62,7 +61,6 @@ func (h *WebhookHandler) validateKubernetesObjectPermissions(
 			return nil, fmt.Errorf("failed to read content for component %s", componentName)
 		}
 
-		log.Info("======================= Step 9")
 		if err := h.validatePermissionsOnObject(ctx, req, componentName, typeMeta); err != nil {
 			return nil, err
 		}
