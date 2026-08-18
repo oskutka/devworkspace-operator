@@ -176,6 +176,9 @@ func (h *WebhookHandler) MutateWorkspaceV1alpha2OnUpdate(ctx context.Context, re
 		// Skip permission validation when stopping a workspace: users must always
 		// be able to stop a workspace even if its current spec would fail validation (e.g. after RBAC changes).
 		if isTransitionFromStartToStop {
+			if warnings != "" {
+				warnings += "; "
+			}
 			warnings += fmt.Sprintf("permission validation failed but workspace is being stopped: %s", err.Error())
 		} else {
 			if code != nil {
